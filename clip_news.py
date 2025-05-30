@@ -46,3 +46,13 @@ if __name__ == "__main__":
         news_items = search_news(keyword)
         for news in news_items:
             add_to_notion(news["title"], news["link"], keyword)
+
+print("🔍 클리핑 스크립트 시작")
+print(f"NAVER_CLIENT_ID: {os.getenv('NAVER_CLIENT_ID')}")
+print("✅ 요청 준비 완료")
+
+
+try:
+    main()
+except Exception as e:
+    print(f"🔥 예외 발생: {e}")
