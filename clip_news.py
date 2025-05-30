@@ -14,10 +14,10 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 
 # 뉴스 검색
-def search_news(query):
-    quoted_query = f'"{query}"' 
+def search_news(query, max_results=10):
+    quoted_query = f'"{query}"'
     enc_query = urllib.parse.quote(quoted_query)
-    url = f"https://openapi.naver.com/v1/search/news.json?query={enc_query}&display=5&sort=date"
+    url = f"https://openapi.naver.com/v1/search/news.json?query={enc_query}&display=30&sort=date"
     headers = {
         "X-Naver-Client-Id": NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
@@ -26,7 +26,21 @@ def search_news(query):
     print(f"📡 [{query}] 뉴스 요청 결과: {res.status_code}")
     if res.status_code != 200:
         print(res.text)
-    return res.json().get("items", []) if res.status_code == 200 else []
+        return []
+
+    items = res.json().get("items", [])
+
+    seen = set()
+    unique_items = []
+    for item in items:
+        key = (item["title"], item["link"])
+        if key not in seen:
+            seen.add(key)
+            unique_items.append(item)
+        if len(unique_items) == max_results:
+            break
+
+    return unique_items
 
 # Notion에 추가
 def add_to_notion(title, url, keyword, summary):
