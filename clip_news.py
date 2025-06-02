@@ -7,13 +7,27 @@ def clean_text(text):
     text = re.sub(r"<[^>]+>", "", text)   # <b>, <i> 같은 태그 제거
     return unescape(text)                 # &quot; → ", &apos; → ', etc
 
-# 환경 변수에서 가져옴 (GitHub Secrets와 연동됨)
+# 환경 변수 (공통)
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 
-# 뉴스 검색
+# ✅ 키워드별 Notion Database 매핑
+keywords = {
+    "휴넷": "20693bdfd3ce81f29fb8000cd8572d21", 
+    "멀티캠퍼스": "20693bdfd3ce8121bb98000c4c345514",
+    "패스트캠퍼스": "20693bdfd3ce81e1b399000c88b117d4",
+    "클래스101": "20693bdfd3ce8147bbc2000cd512ef61",
+    "클라썸": "20693bdfd3ce81629e36000cb6e74580",
+    "유데미": "20693bdfd3ce8196b214000c82a85065",
+    "인프런": "20693bdfd3ce8131a77e000cbfc2ea33",
+    "터치클래스": "20693bdfd3ce8198a1a6000c6df77ec2",
+    "디지털 원격훈련 아카이브": "20693bdfd3ce8130aa5e000c23c5626a",
+    "기업교육 AI": "20693bdfd3ce817e91d6000ca525d59b",
+    "HRD 기업교육": "20693bdfd3ce817fae58000ce6e3b730"
+}
+
+# ✅ 뉴스 검색
 def search_news(query, max_results=10):
     quoted_query = f'"{query}"'
     enc_query = urllib.parse.quote(quoted_query)
@@ -42,8 +56,8 @@ def search_news(query, max_results=10):
 
     return unique_items
 
-# Notion에 추가
-def add_to_notion(title, url, keyword, summary):
+# ✅ Notion 업로드
+def add_to_notion(title, url, keyword, summary, pub_date, database_id):
     notion_url = "https://api.notion.com/v1/pages"
     headers = {
         "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -51,13 +65,13 @@ def add_to_notion(title, url, keyword, summary):
         "Notion-Version": "2022-06-28"
     }
     data = {
-        "parent": { "database_id": NOTION_DATABASE_ID },
+        "parent": { "database_id": database_id },
         "properties": {
             "Title": { "title": [{ "text": { "content": title } }] },
             "Link": { "url": url },
             "Keyword": { "rich_text": [{ "text": { "content": keyword } }] },
             "Summary": { "rich_text": [{ "text": { "content": summary } }] },
-            "Date": { "date": { "start": datetime.today().strftime("%Y-%m-%d") } }
+            "Date": { "date": { "start": pub_date } }
         }
     }
     res = requests.post(notion_url, headers=headers, json=data)
@@ -67,13 +81,10 @@ def add_to_notion(title, url, keyword, summary):
         print(f"❌ Notion 업로드 실패: {res.status_code}")
         print(res.text)
 
-# 메인 실행
+# ✅ 메인 실행
 def main():
     print("🔍 클리핑 스크립트 시작")
-    print(f"✅ NAVER_CLIENT_ID 존재 여부: {bool(NAVER_CLIENT_ID)}")
-
-    keywords = ["기업교육", "휴넷"]
-    for keyword in keywords:
+    for keyword, db_id in keywords.items():
         print(f"\n🔎 [{keyword}] 뉴스 검색 중...")
         news_items = search_news(keyword)
         if not news_items:
@@ -83,7 +94,9 @@ def main():
             title = clean_text(news["title"])
             summary = clean_text(news["description"])
             link = news["link"]
-            add_to_notion(title, link, keyword, summary)
+            pub_date = news.get("pubDate", "")[:16] 
+            pub_date = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M").strftime("%Y-%m-%d")
+            add_to_notion(title, link, keyword, summary, pub_date, db_id)
 
 if __name__ == "__main__":
     try:
