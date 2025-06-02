@@ -27,17 +27,17 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 
 # ✅ 키워드별 Notion Database 매핑
 keywords = {
-    "휴넷": "20693bdfd3ce81f29fb8000cd8572d21", 
-    "멀티캠퍼스": "20693bdfd3ce8121bb98000c4c345514",
-    "패스트캠퍼스": "20693bdfd3ce81e1b399000c88b117d4",
-    "클래스101": "20693bdfd3ce8147bbc2000cd512ef61",
-    "클라썸": "20693bdfd3ce81629e36000cb6e74580",
-    "유데미": "20693bdfd3ce8196b214000c82a85065",
-    "인프런": "20693bdfd3ce8131a77e000cbfc2ea33",
-    "터치클래스": "20693bdfd3ce8198a1a6000c6df77ec2",
-    "디지털 원격훈련 아카이브": "20693bdfd3ce8130aa5e000c23c5626a",
-    "기업교육 AI": "20693bdfd3ce817e91d6000ca525d59b",
-    "HRD 기업교육": "20693bdfd3ce817fae58000ce6e3b730"
+    "휴넷": "20693bdfd3ce810da9f9ea32a6f462cf", 
+    "멀티캠퍼스": "20693bdfd3ce810faecede33064bbf5b",
+    "패스트캠퍼스": "20693bdfd3ce81acba7bf37a59555636",
+    "클래스101": "20693bdfd3ce819cb9ead103d34bbcfd",
+    "클라썸": "20693bdfd3ce81938cc0cae3a8aeed36",
+    "유데미": "20693bdfd3ce815e96d2ea36980f5d4b",
+    "인프런": "20693bdfd3ce815db7c7cedd727958d0",
+    "터치클래스": "20693bdfd3ce812fa96ce406fc3c3a10",
+    "디지털 원격훈련 아카이브": "20693bdfd3ce81af971ddb0eeded978e",
+    "기업교육 AI": "20693bdfd3ce817ea5e7d3260183b623",
+    "HRD 기업교육": "20693bdfd3ce813ebf22d9e276ac6bd6"
 }
 
 # ✅ 뉴스 검색
