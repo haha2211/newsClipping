@@ -4,10 +4,23 @@ from datetime import datetime
 
 # ✅ HTML 태그 제거 + HTML 엔티티 디코딩
 def clean_text(text):
-    text = re.sub(r"<[^>]+>", "", text)   # <b>, <i> 같은 태그 제거
-    return unescape(text)                 # &quot; → ", &apos; → ', etc
+    text = re.sub(r"<[^>]+>", "", text)
+    return unescape(text)
 
-# 환경 변수 (공통)
+# ✅ pubDate 파싱 함수 (형식 다양성 대응)
+def parse_pub_date(pub_date_raw):
+    try:
+        for fmt in ("%a, %d %b %Y %H:%M", "%a, %d %b %Y"):
+            try:
+                return datetime.strptime(pub_date_raw[:len(fmt)], fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        raise ValueError("날짜 포맷 불일치")
+    except Exception as e:
+        print(f"⚠️ 날짜 파싱 실패, 오늘 날짜로 대체: {pub_date_raw}")
+        return datetime.today().strftime("%Y-%m-%d")
+
+# 🔐 환경 변수
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
@@ -94,8 +107,8 @@ def main():
             title = clean_text(news["title"])
             summary = clean_text(news["description"])
             link = news["link"]
-            pub_date = news.get("pubDate", "")[:16] 
-            pub_date = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M").strftime("%Y-%m-%d")
+            pub_date_raw = news.get("pubDate", "")
+            pub_date = parse_pub_date(pub_date_raw)
             add_to_notion(title, link, keyword, summary, pub_date, db_id)
 
 if __name__ == "__main__":
