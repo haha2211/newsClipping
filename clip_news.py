@@ -2,158 +2,147 @@ import requests, urllib.parse, os, re
 from html import unescape
 from datetime import datetime, timedelta
 
-# ✅ HTML 태그 제거 + HTML 엔티티 디코딩
-def clean_text(text):
-    text = re.sub(r"<[^>]+>", "", text)
-    return unescape(text)
 
-# ✅ pubDate 파싱 함수 (형식 다양성 대응)
-def parse_pub_date(pub_date_raw):
-    try:
+def logger(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+
+class NewsClipper:
+    def __init__(self):
+        self.naver_client_id = os.getenv("NAVER_CLIENT_ID")
+        self.naver_client_secret = os.getenv("NAVER_CLIENT_SECRET")
+        self.notion_token = os.getenv("NOTION_TOKEN")
+        self.notion_version = "2022-06-28"
+
+        # 키워드별 Notion DB ID
+        self.keywords = {
+            "휴넷": "20693bdfd3ce810da9f9ea32a6f462cf", 
+            "멀티캠퍼스": "20693bdfd3ce810faecede33064bbf5b",
+            "패스트캠퍼스": "20693bdfd3ce81acba7bf37a59555636",
+            "클래스101": "20693bdfd3ce819cb9ead103d34bbcfd",
+            "클라썸": "20693bdfd3ce81938cc0cae3a8aeed36",
+            "유데미": "20693bdfd3ce815e96d2ea36980f5d4b",
+            "인프런": "20693bdfd3ce815db7c7cedd727958d0",
+            "터치클래스": "20693bdfd3ce812fa96ce406fc3c3a10",
+            "디지털 원격훈련 아카이브": "20693bdfd3ce81af971ddb0eeded978e",
+            "기업교육 AI": "20693bdfd3ce817ea5e7d3260183b623",
+            "HRD 기업교육": "20693bdfd3ce813ebf22d9e276ac6bd6"
+        }
+
+    @staticmethod
+    def clean_text(text):
+        return unescape(re.sub(r"<[^>]+>", "", text))
+
+    @staticmethod
+    def parse_pub_date(raw):
         for fmt in ("%a, %d %b %Y %H:%M", "%a, %d %b %Y"):
             try:
-                return datetime.strptime(pub_date_raw[:len(fmt)], fmt).strftime("%Y-%m-%d")
+                return datetime.strptime(raw[:len(fmt)], fmt).strftime("%Y-%m-%d")
             except ValueError:
                 continue
-        raise ValueError("날짜 포맷 불일치")
-    except Exception as e:
-        print(f"⚠️ 날짜 파싱 실패, 오늘 날짜로 대체: {pub_date_raw}")
+        logger(f"⚠️ 날짜 파싱 실패, 오늘로 대체: {raw}")
         return datetime.today().strftime("%Y-%m-%d")
 
-# 🔐 환경 변수
-NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+    @staticmethod
+    def generate_key(title, link):
+        return f"{title}|{link}"
 
-# ✅ 키워드별 Notion Database 매핑
-keywords = {
-    "휴넷": "20693bdfd3ce810da9f9ea32a6f462cf", 
-    "멀티캠퍼스": "20693bdfd3ce810faecede33064bbf5b",
-    "패스트캠퍼스": "20693bdfd3ce81acba7bf37a59555636",
-    "클래스101": "20693bdfd3ce819cb9ead103d34bbcfd",
-    "클라썸": "20693bdfd3ce81938cc0cae3a8aeed36",
-    "유데미": "20693bdfd3ce815e96d2ea36980f5d4b",
-    "인프런": "20693bdfd3ce815db7c7cedd727958d0",
-    "터치클래스": "20693bdfd3ce812fa96ce406fc3c3a10",
-    "디지털 원격훈련 아카이브": "20693bdfd3ce81af971ddb0eeded978e",
-    "기업교육 AI": "20693bdfd3ce817ea5e7d3260183b623",
-    "HRD 기업교육": "20693bdfd3ce813ebf22d9e276ac6bd6"
-}
+    def fetch_existing_keys(self, db_id):
+        url = f"https://api.notion.com/v1/databases/{db_id}/query"
+        headers = self._notion_headers()
 
-# ✅ 뉴스 검색
-def search_news(query, max_results=10):
-    quoted_query = f'"{query}"'
-    enc_query = urllib.parse.quote(quoted_query)
-    url = f"https://openapi.naver.com/v1/search/news.json?query={enc_query}&display=30&sort=date"
-    headers = {
-        "X-Naver-Client-Id": NAVER_CLIENT_ID,
-        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
-    }
-    res = requests.get(url, headers=headers)
-    print(f"📡 [{query}] 뉴스 요청 결과: {res.status_code}")
-    if res.status_code != 200:
-        print(res.text)
-        return []
-
-    items = res.json().get("items", [])
-
-    seen = set()
-    unique_items = []
-    for item in items:
-        key = (item["title"], item["link"])
-        if key not in seen:
-            seen.add(key)
-            unique_items.append(item)
-        if len(unique_items) == max_results:
-            break
-
-    return unique_items
-
-def is_duplicate_in_notion(title, link, database_id):
-    query_url = f"https://api.notion.com/v1/databases/{database_id}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-    }
-
-    two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
-
-    body = {
-        "filter": {
-            "timestamp": "created_time",
-            "created_time": {
-                "on_or_after": two_days_ago
+        two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        payload = {
+            "filter": {
+                "property": "Date",
+                "date": { "on_or_after": two_days_ago }
             }
-        },
-        "page_size": 100
-    }
-
-    res = requests.post(query_url, headers=headers, json=body)
-    if res.status_code != 200:
-        print(f"❗ Notion 중복 확인 실패: {res.status_code}")
-        print(res.text)
-        return False
-
-    data = res.json()
-    for page in data.get("results", []):
-        props = page.get("properties", {})
-        notion_title = props.get("Title", {}).get("title", [])
-        notion_link = props.get("Link", {}).get("url", "")
-        
-        extracted_title = notion_title[0]["text"]["content"] if notion_title else ""
-        if extracted_title == title and notion_link == link:
-            return True
-
-    return False
-
-# ✅ Notion 업로드
-def add_to_notion(title, url, keyword, summary, pub_date, database_id):
-    notion_url = "https://api.notion.com/v1/pages"
-    headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-    }
-    data = {
-        "parent": { "database_id": database_id },
-        "properties": {
-            "Title": { "title": [{ "text": { "content": title } }] },
-            "Link": { "url": url },
-            "Keyword": { "rich_text": [{ "text": { "content": keyword } }] },
-            "Summary": { "rich_text": [{ "text": { "content": summary } }] },
-            "Date": { "date": { "start": pub_date } }
         }
-    }
-    res = requests.post(notion_url, headers=headers, json=data)
-    if res.status_code == 200:
-        print(f"✅ Notion 업로드 성공: {title}")
-    else:
-        print(f"❌ Notion 업로드 실패: {res.status_code}")
-        print(res.text)
 
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code != 200:
+            logger(f"❌ Notion DB 조회 실패: {res.status_code}")
+            return set()
 
-# ✅ 메인 실행
-def main():
-    print("🔍 클리핑 스크립트 시작")
-    for keyword, db_id in keywords.items():
-        print(f"\n🔎 [{keyword}] 뉴스 검색 중...")
-        news_items = search_news(keyword)
-        if not news_items:
-            print("📭 뉴스 없음")
-            continue
-        
-        for news in news_items:
-            title = clean_text(news["title"])
-            summary = clean_text(news["description"])
-            link = news["link"]
-            pub_date_raw = news.get("pubDate", "")
-            pub_date = parse_pub_date(pub_date_raw)
+        results = res.json().get("results", [])
+        return {
+            self.generate_key(
+                r["properties"]["Title"]["title"][0]["plain_text"],
+                r["properties"]["Link"]["url"]
+            )
+            for r in results if r["properties"]["Title"]["title"] and r["properties"]["Link"]["url"]
+        }
 
-            # ✅ 중복 확인
-            if is_duplicate_in_notion(title, link, db_id):
-                print(f"🚫 이미 등록된 뉴스 (건너뜀): {title}")
+    def search_news(self, keyword):
+        enc_query = urllib.parse.quote(f'"{keyword}"')
+        url = f"https://openapi.naver.com/v1/search/news.json?query={enc_query}&display=30&sort=date"
+        headers = {
+            "X-Naver-Client-Id": self.naver_client_id,
+            "X-Naver-Client-Secret": self.naver_client_secret
+        }
+
+        res = requests.get(url, headers=headers)
+        logger(f"🔍 [{keyword}] 뉴스 검색: {res.status_code}")
+        if res.status_code != 200:
+            logger(res.text)
+            return []
+
+        return res.json().get("items", [])
+
+    def add_to_notion(self, title, link, keyword, summary, pub_date, db_id):
+        url = "https://api.notion.com/v1/pages"
+        headers = self._notion_headers()
+        payload = {
+            "parent": { "database_id": db_id },
+            "properties": {
+                "Title": { "title": [{ "text": { "content": title } }] },
+                "Link": { "url": link },
+                "Keyword": { "rich_text": [{ "text": { "content": keyword } }] },
+                "Summary": { "rich_text": [{ "text": { "content": summary } }] },
+                "Date": { "date": { "start": pub_date } }
+            }
+        }
+
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code == 200:
+            logger(f"✅ 업로드 성공: {title}")
+        else:
+            logger(f"❌ 업로드 실패: {res.status_code}\n{res.text}")
+
+    def _notion_headers(self):
+        return {
+            "Authorization": f"Bearer {self.notion_token}",
+            "Content-Type": "application/json",
+            "Notion-Version": self.notion_version
+        }
+
+    def run(self):
+        logger("🚀 뉴스 클리핑 시작")
+        for keyword, db_id in self.keywords.items():
+            logger(f"\n🔎 [{keyword}] 처리 중")
+            existing_keys = self.fetch_existing_keys(db_id)
+            news_items = self.search_news(keyword)
+
+            if not news_items:
+                logger("📭 뉴스 없음")
                 continue
 
-            # ✅ Notion에 업로드
-            add_to_notion(title, link, keyword, summary, pub_date, db_id)
+            for news in news_items:
+                title = self.clean_text(news["title"])
+                summary = self.clean_text(news["description"])
+                link = news["link"]
+                pub_date = self.parse_pub_date(news.get("pubDate", ""))
+                key = self.generate_key(title, link)
+
+                if key in existing_keys:
+                    logger(f"🚫 중복 건너뜀: {title}")
+                    continue
+
+                self.add_to_notion(title, link, keyword, summary, pub_date, db_id)
+
+
+if __name__ == "__main__":
+    try:
+        NewsClipper().run()
+    except Exception as e:
+        logger(f"🔥 예외 발생: {e}")
