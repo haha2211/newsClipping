@@ -1,6 +1,6 @@
 import requests, urllib.parse, os, re
 from html import unescape
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ✅ HTML 태그 제거 + HTML 엔티티 디코딩
 def clean_text(text):
@@ -69,6 +69,44 @@ def search_news(query, max_results=10):
 
     return unique_items
 
+def is_duplicate_in_notion(title, link, database_id):
+    query_url = f"https://api.notion.com/v1/databases/{database_id}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+
+    two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
+
+    body = {
+        "filter": {
+            "timestamp": "created_time",
+            "created_time": {
+                "on_or_after": two_days_ago
+            }
+        },
+        "page_size": 100
+    }
+
+    res = requests.post(query_url, headers=headers, json=body)
+    if res.status_code != 200:
+        print(f"❗ Notion 중복 확인 실패: {res.status_code}")
+        print(res.text)
+        return False
+
+    data = res.json()
+    for page in data.get("results", []):
+        props = page.get("properties", {})
+        notion_title = props.get("Title", {}).get("title", [])
+        notion_link = props.get("Link", {}).get("url", "")
+        
+        extracted_title = notion_title[0]["text"]["content"] if notion_title else ""
+        if extracted_title == title and notion_link == link:
+            return True
+
+    return False
+
 # ✅ Notion 업로드
 def add_to_notion(title, url, keyword, summary, pub_date, database_id):
     notion_url = "https://api.notion.com/v1/pages"
@@ -94,6 +132,7 @@ def add_to_notion(title, url, keyword, summary, pub_date, database_id):
         print(f"❌ Notion 업로드 실패: {res.status_code}")
         print(res.text)
 
+
 # ✅ 메인 실행
 def main():
     print("🔍 클리핑 스크립트 시작")
@@ -103,16 +142,18 @@ def main():
         if not news_items:
             print("📭 뉴스 없음")
             continue
+        
         for news in news_items:
             title = clean_text(news["title"])
             summary = clean_text(news["description"])
             link = news["link"]
             pub_date_raw = news.get("pubDate", "")
             pub_date = parse_pub_date(pub_date_raw)
-            add_to_notion(title, link, keyword, summary, pub_date, db_id)
 
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"🔥 예외 발생: {e}")
+            # ✅ 중복 확인
+            if is_duplicate_in_notion(title, link, db_id):
+                print(f"🚫 이미 등록된 뉴스 (건너뜀): {title}")
+                continue
+
+            # ✅ Notion에 업로드
+            add_to_notion(title, link, keyword, summary, pub_date, db_id)
